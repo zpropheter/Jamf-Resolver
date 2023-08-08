@@ -26,6 +26,7 @@
 #User defined Variables- set to 'TRUE' , 'FALSE' , or 'CAUTIOUS' to enable or disable each feature. 'CAUTIOUS' variable does read only and requires user intervention to remove files
 JRR=TRUE
 DSER=TRUE
+#DO NOT HARD CODE API CREDENTIALS IN SCRIPT. USE JAMF PAYLOAD TO PASS THE CREDENTIALS AS VARIABLES
 APIUSER="API_Username"
 APIPASS="API_password"
 url="https://serverurl.jamfcloud.com"
