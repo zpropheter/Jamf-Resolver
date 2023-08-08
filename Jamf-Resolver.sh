@@ -2,43 +2,29 @@
 
 #Jamf-Resolver is designed to walk admins and end-users through resolutions to common issues. It starts with some of the most common issues and progresses into some of the more complex items from there
 
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#        * Redistributions of source code must retain the above copyright
-#         notice, this list of conditions and the following disclaimer.
-#      * Redistributions in binary form must reproduce the above copyright
-#           notice, this list of conditions and the following disclaimer in the
-#           documentation and/or other materials provided with the distribution.
-#         * Neither the name of the JAMF Software, LLC nor the
-#           names of its contributors may be used to endorse or promote products
-#           derived from this software without specific prior written permission.
-# THIS SOFTWARE IS PROVIDED BY JAMF SOFTWARE, LLC "AS IS" AND ANY
-# EXPRESSED OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL JAMF SOFTWARE, LLC BE LIABLE FOR ANY
-# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 
 #User defined Variables- set to 'TRUE' , 'FALSE' , or 'CAUTIOUS' to enable or disable each feature. 'CAUTIOUS' variable does read only and requires user intervention to remove files
-JRR=TRUE
-DSER=TRUE
-#DO NOT HARD CODE API CREDENTIALS IN SCRIPT. USE JAMF PAYLOAD TO PASS THE CREDENTIALS AS VARIABLES
+JRR=FALSE
+DSER=FALSE
+MCR=FALSE
 APIUSER="API_Username"
 APIPASS="API_password"
 url="https://serverurl.jamfcloud.com"
 
-#DEFINE WHERE YOU WANT RESULTS SAVED
-output=/Users/Shared/output.txt
 
 #HARD CODED VARIABLES
 loggedInUser=$( echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ && ! /loginwindow/ { print $3 }' )
 reconleftovers=$(ls /Library/Application\ Support/JAMF/tmp/)
 Recon_Directory_Copy=/Users/Shared/
 jamf_log=/private/var/log/jamf.log
+currenttime=$(date +"%D %T")
+
+
+#DEFINE WHERE YOU WANT RESULTS SAVED
+output=/Users/Shared/output.txt
+#CREATE NEW LOG FILE
+echo "New output file generated on $currenttime" > $output
 
 #HARD CODED VARIABLE FOR API BEARER TOKEN RETRIEVAL
 getBearerToken() {
@@ -81,7 +67,7 @@ if [[ "$JRR" == TRUE ]];then
 	fi
 #CHECK IF DISABLED
 elif [[ "$JRR" == FALSE ]];then
-	echo -e "Recon Recon Resolver turned off\n" >> $output
+	echo -e "Recon Resolver turned off\n" >> $output
 #CHECK IF SET TO READ ONLY
 elif [[ "$JRR" == CAUTIOUS ]];then
 	#CHECK IF RECON FOLDER HAS ANY ITEMS IN IT
@@ -94,12 +80,12 @@ elif [[ "$JRR" == CAUTIOUS ]];then
 		echo -e "\nRecon leftovers found and listed above\nTo temporarily remediate, set Jamf_Recon_Resolver to TRUE or \n1.Open Terminal\n2.Type 'rm -r /Library/Application\ Support/JAMF/tmp/*'\nThis will remove all temporary files in the folder and allow the inventory update to complete.\nSometimes these files get stuck, so this helps reset them.\nIf they come back, examine the files copied to the directory you set for Recon_Directory_Copy. They should contain problematic scripts set as Extension Attributes" >> $output
 	fi
 else
-	echo -e "Recon Recon Resolver set to invalid value\n" >> $output
+	echo -e "Recon Resolver set to invalid value\n" >> $output
 fi
 
 
 #Device_Signature_Error_Resolver
-if [ "$DSER" = "TRUE" ] || [ "$DSER" = "CAUTIOUS" ];then
+if [ "$DSER" = TRUE ] || [ "$DSER" = CAUTIOUS ];then
 	if grep -Fq "A valid device signature is required to perform the action" $jamf_log
 	then
 		if [[ "$DSER" == TRUE ]];then
@@ -132,15 +118,43 @@ if [ "$DSER" = "TRUE" ] || [ "$DSER" = "CAUTIOUS" ];then
 						echo -e "An error was encountered while trying to redeploy the framework. Your device still needs to run the API call" >> $output
 					fi
 				else
-					echo -e "Unable to pull computer ID, please locate computer ID and run /v1/jamf-management-framework/redeploy/{id}" >> $output
+					echo -e "Unable to pull computer ID, please locate computer ID and run /v1/jamf-management-framework/redeploy/{id}\n" >> $output
 				fi
 			else
 				echo -e "No API user credentials found. Please enter credentials for APIUSER and APIPASS to continue.\n" >> $output
 			fi
-		elif [[ "$DSER" == CAUTIOUS ]];then
-			echo -e "Your computer has a device signature error. To resolve, please try using the /v1/jamf-management-framework/redeploy/{id} API." >> $output
-		fi
+		else [[ "$DSER" == CAUTIOUS ]]
+			echo -e "Your computer has a device signature error. To resolve, please try using the /v1/jamf-management-framework/redeploy/{id} API.\n" >> $output
+			fi
 	else
-		echo -e "No device signature errors found in your jamf.log" >> $output
+		echo -e "No device signature errors found in your jamf.log\n" >> $output
 	fi
+elif [[ "$DSER" == FALSE ]];then
+	echo -e "Device Signature Error Resolver is not turned on\n" >> $output
+else 
+	echo -e "Incorrect Variable set for Device Signature Error Resolver\n" >> $output
+fi
+
+#MDM_Communication_Resolver
+#CHECK IF ENABLED
+if [ "$MCR" = "TRUE" ] || [ "$MCR" = "CAUTIOUS" ];then
+	result=$(log show --style compact --predicate '(process CONTAINS "mdmclient")' --last 1d | grep "Unable to create MDM identity")
+	if [[ $result == '' ]]; then
+		echo -e "MDM is communicating, no action necessary.\n"
+	elif [[ "$result" != '' ]] && [[ "$MCR" == "TRUE" ]];then
+		echo "MDM is broken.\n"
+		profiles validate -type enrollment
+		profiles renew -type enrollment
+		if [[ $result == '' ]]; then
+			echo -e "MDM is communicating after renewing enrollment, no further action necessary.\n"
+		else
+			echo -e "MDM is still broken. Your device will need to be wiped and re-enrolled if it has a DEP non-removable profile.\n"
+		fi
+	else [[ "$result" != '' ]] && [[ "$MCR" == "CAUTIOUS" ]]
+		echo -e "MDM is broken.\nThe recommended workflow for this issue is to do the following.\n1.Open Terminal\n2.Type: sudo profiles validate -type enrollment\n3.Press Enter\n4.Type: sudo profiles renew -type enrollment\n5.Press Enter\nIf the command processes correctly the issue should resolve. If it errors out, the device may have non-removable profiles installed from DEP and need to be wiped and re-enrolled."
+	fi
+elif [[ $MCR == "FALSE" ]]; then
+	echo -e "MDM Communication Resolver is not turned on\n" >> $output
+else
+	echo -e "Incorrect Variable set for MDM Communication Resolver\n" >> $output
 fi
