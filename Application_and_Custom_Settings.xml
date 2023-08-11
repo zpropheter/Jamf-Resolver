@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Computer ID</key>
+	<string>$JSSID</string>
+	<key>Computer Name</key>
+	<string>$COMPUTERNAME</string>
+	<key>Computer Network Connection MAC Address</key>
+	<string>$MACADDRESS</string>
+	<key>Computer Serial Number</key>
+	<string>$SERIALNUMBER</string>
+	<key>Computer UDID</key>
+	<string>$UDID</string>
+	<key>Computer User's Email Address</key>
+	<string>$EMAIL</string>
+	<key>Computer User's Name</key>
+	<string>$REALNAME</string>
+	<key>Computer User's Office Building ID</key>
+	<string>$BUILDINGID</string>
+	<key>Computer User's Office Building Name</key>
+	<string>$BUILDINGNAME</string>
+	<key>Computer User's Office Department</key>
+	<string>$DEPARTMENTNAME</string>
+	<key>Computer User's Office Department ID</key>
+	<string>$DEPARTMENTID</string>
+	<key>Computer User's Office Position</key>
+	<string>$POSITION</string>
+	<key>Computer User's Office Room Location</key>
+	<string>$ROOM</string>
+	<key>Computer User's Phone Number</key>
+	<string>$PHONE</string>
+	<key>Computer User's username</key>
+	<string>$USERNAME</string>
+	<key>Site</key>
+	<string>$SITENAME</string>
+	<key>Site ID</key>
+	<string>$SITEID</string>
+</dict>
+</plist>
