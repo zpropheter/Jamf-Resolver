@@ -24,13 +24,12 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #User defined Variables- set to 'TRUE' , 'FALSE' , or 'CAUTIOUS' to enable or disable each feature. 'CAUTIOUS' variable does read only and requires user intervention to remove files
+APIUSER="API_USERNAME"
+APIPASS="API_PASSWORD"
+url="https://yourserver.jamfcloud.com"
 JRR=FALSE
-DSER=FALSE
+DSER=TRUE
 MCR=FALSE
-APIUSER="API_Username"
-APIPASS="API_password"
-url="https://serverurl.jamfcloud.com"
-
 
 #HARD CODED VARIABLES
 loggedInUser=$( echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ && ! /loginwindow/ { print $3 }' )
@@ -38,12 +37,22 @@ reconleftovers=$(ls /Library/Application\ Support/JAMF/tmp/)
 Recon_Directory_Copy=/Users/Shared/
 jamf_log=/private/var/log/jamf.log
 currenttime=$(date +"%D %T")
-
-
-#DEFINE WHERE YOU WANT RESULTS SAVED
+serialnumber=$( system_profiler SPHardwareDataType | grep Serial |  awk '{print $NF}' )
 output=/Users/Shared/output.txt
+
+
 #CREATE NEW LOG FILE
 echo "New output file generated on $currenttime" > $output
+
+#CHECK IF API CREDENTIALS AVAILABLE
+APISTATUS=$(if [[ $APIUSER != "" ]] && [[ $APIPASS != "" ]];then
+echo "ENABLED"
+else
+echo "DISABLED"
+fi)
+
+#CHECK FOR CUSTOM PLIST ALREADY INSTALLED ON THE COMPUTER
+	redeployresponse=$(defaults read /Library/Managed\ Preferences/com.propheter.jresolver "Computer ID")
 
 #HARD CODED VARIABLE FOR API BEARER TOKEN RETRIEVAL
 getBearerToken() {
@@ -53,7 +62,29 @@ getBearerToken() {
 	tokenExpirationEpoch=$(date -j -f "%Y-%m-%dT%T" "$tokenExpiration" +"%s")
 }
 
-#HARD CODED VARIABLE FOR API BEARER TOKEN INVALIDATION
+#create a REDEPLOY COMMAND
+reDeployFramework() {
+	#REDEPLOY MANAGEMENT FRAMEWORK
+	apiresponse=$(curl -X 'POST' \
+						"$url/api/v1/jamf-management-framework/redeploy/$computer_id" \
+						-H 'accept: application/json' \
+						-H "Authorization: Bearer $bearerToken" \
+						-d '')
+	echo "$apiresponse" >> $output
+	echo -e "Finished attempting to redeploy framework... invalidating token" >> $output
+}
+
+#API CALL TO GET DEVICE ID FROM RECORD
+getDeviceRecord() {
+	devicerecord=$(curl -X 'GET' \
+	"$url/api/v1/computers-inventory?section=GENERAL&page=0&page-size=100&sort=general.name%3Aasc&filter=hardware.serialNumber%3D%3D%22$serialnumber%22" \
+	-H 'accept: application/json' \
+	-H "Authorization: Bearer $bearerToken")
+	deviceid=$(/usr/bin/plutil -extract "results".0."id" raw -o - - <<< "$devicerecord")
+	echo "Device ID: $deviceid" >> $output
+}
+
+#TOKEN INVALIDATION ARRAY
 invalidateToken() {
 	responseCode=$(curl -w "%{http_code}" -H "Authorization: Bearer ${bearerToken}" $url/api/v1/auth/invalidate-token -X POST -s -o /dev/null)
 	if [[ ${responseCode} == 204 ]]
@@ -67,6 +98,14 @@ invalidateToken() {
 	else
 		echo "An unknown error occurred invalidating the token" 
 	fi
+}
+
+#CLEANUP ARRAY
+cleanOutTheLogs() {
+	echo -e "Token invalidated...\nFramework successfully redeployed.\nRemoving Device Signature errors from jamf.log to avoid erroneous runs of DSER." >> $output
+	sed -i '' '/Device Signature Error - A valid device signature is required to perform the action./d' $jamf_log
+	echo -e "Jamf-Resolver removed lines with Device Signature error from Jamf.log, any new entries after this line will need to be addressed" >> $jamf_log
+	echo -e "Jamf-Resolver removed lines with Device Signature error from Jamf.log, any new entries will need to be addressed" >> $output
 }
 
 #Jamf_Recon_Resolver
@@ -102,58 +141,6 @@ else
 	echo -e "Recon Resolver set to invalid value\n" >> $output
 fi
 
-
-#Device_Signature_Error_Resolver
-if [ "$DSER" = TRUE ] || [ "$DSER" = CAUTIOUS ];then
-	if grep -Fq "A valid device signature is required to perform the action" $jamf_log
-	then
-		if [[ "$DSER" == TRUE ]];then
-			echo -e "Your computer has a device signature error. In order to resolve it we'll need to run an API call. Checking if API credentials available..." >> $output
-			if [[ "$APIUSER" != "" ]] && [[ "$APIPASS" != "" ]];then
-				echo -e "Found API user credentials. Looking for Computer ID\n" >> $output
-				echo -e "Running recon to get computer_id" >> $output
-				computer_id=10
-				if [[ "$computer_id" != "" ]];then
-					echo -e "Computer ID: $computer_id\n Running /v1/jamf-management-framework/redeploy/{id}." >> $output
-					#GET BEARER TOKEN FOR API CALL
-					getBearerToken
-					#REDEPLOY MANAGEMENT FRAMEWORK
-					apiresponse=$(curl -X 'POST' \
-						"$url/api/v1/jamf-management-framework/redeploy/$computer_id" \
-						-H 'accept: application/json' \
-						-H "Authorization: Bearer $bearerToken" \
-						-d '')
-					echo "$apiresponse" >> $output
-					echo -e "Finished attempting to redeploy framework... invalidating token" >> $output
-					invalidateToken
-					if grep -Fq "deviceId" "$output"; then
-						echo -e "Token invalidated...\nFramework successfully redeployed.\nRemoving Device Signature errors from jamf.log to avoid erroneous runs of DSER." >> $output
-						sed -i '' '/Device Signature Error - A valid device signature is required to perform the action./d' $jamf_log
-						echo -e "Jamf-Resolver removed lines with Device Signature error from Jamf.log, any new entries after this line will need to be addressed" >> $jamf_log
-						echo -e "Jamf-Resolver removed lines with Device Signature error from Jamf.log, any new entries will need to be addressed" >> $output
-					elif grep -Fq "httpStatus" "$output"; then
-						echo -e "An error was encountered while trying to redeploy the framework. Your device still needs to run the API call" >> $output
-					else
-						echo -e "An error was encountered while trying to redeploy the framework. Your device still needs to run the API call" >> $output
-					fi
-				else
-					echo -e "Unable to pull computer ID, please locate computer ID and run /v1/jamf-management-framework/redeploy/{id}\n" >> $output
-				fi
-			else
-				echo -e "No API user credentials found. Please enter credentials for APIUSER and APIPASS to continue.\n" >> $output
-			fi
-		else [[ "$DSER" == CAUTIOUS ]]
-			echo -e "Your computer has a device signature error. To resolve, please try using the /v1/jamf-management-framework/redeploy/{id} API.\n" >> $output
-			fi
-	else
-		echo -e "No device signature errors found in your jamf.log\n" >> $output
-	fi
-elif [[ "$DSER" == FALSE ]];then
-	echo -e "Device Signature Error Resolver is not turned on\n" >> $output
-else 
-	echo -e "Incorrect Variable set for Device Signature Error Resolver\n" >> $output
-fi
-
 #MDM_Communication_Resolver
 #CHECK IF ENABLED
 if [ "$MCR" = "TRUE" ] || [ "$MCR" = "CAUTIOUS" ];then
@@ -176,4 +163,54 @@ elif [[ $MCR == "FALSE" ]]; then
 	echo -e "MDM Communication Resolver is not turned on\n" >> $output
 else
 	echo -e "Incorrect Variable set for MDM Communication Resolver\n" >> $output
+fi
+
+#Device_Signature_Error_Resolver
+if [ "$DSER" = TRUE ];then
+	if grep -Fq "A valid device signature is required to perform the action" $jamf_log
+	then
+		if [[ -n $redeployresponse ]] || [ "$APISTATUS" == ENABLED ];then
+			if [[ $redeployresponse != "" ]];then
+				computer_id=$redeployresponse
+				echo -e "Redeploying framework from plist\n-Getting Bearer Token\n"
+				getBearerToken
+				echo -e "Got Bearer Token... redeploying framework\n-Computer ID:$computer_id selected for redeploying framework\n"
+				reDeployFramework
+				echo -e "-Framework redeployed, cleaning out logs\n"
+				invalidateToken
+				cleanOutTheLogs
+				echo -e "-Logs cleaned out, exiting to next resolver function\n"
+			else
+				echo -e "Running API to redeploy framework\n-Getting Bearer Token\n"
+				getBearerToken 
+				echo -e "-Got Bearer Token... getting Device Record\n"
+				getDeviceRecord
+				echo -e "-Checking Device Record\n"
+				computer_id=$deviceid
+				if grep -Fq "Could not extract value" $output
+				then 
+					echo -e "**Unable to get Computer ID from API**\n"
+				else
+					echo -e "-Computer ID:$computer_id selected for redeploying framework\n"
+					reDeployFramework
+					echo -e "-Framework redeployed, cleaning out logs\n"
+					invalidateToken
+					cleanOutTheLogs
+					echo -e "-Logs cleaned out, exiting to next resolver function\n"
+				fi
+			fi
+		else
+			echo -e "Unable to get Device ID"
+		fi
+		
+	else
+		echo -e "No Device Signature Error detected\n" >> $output
+	fi
+elif [ "$DSER" = FALSE ]; then
+	echo -e "Device Signature Error Resolver turned off" > $output
+elif [ "$DSER" = CAUTIOUS ];then
+		if grep -Fq "A valid device signature is required to perform the action" $jamf_log; then
+			echo -e "A Device signature error has been found, you will need to redeploy the management framework in order to resolve communication with your Jamf server.\n"
+		fi
+	echo -e "Invalid Variable for Device Signature Error Resolver" >> $output
 fi
