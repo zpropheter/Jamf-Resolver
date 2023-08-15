@@ -239,3 +239,6 @@ echo "Duplicate Resolver is turned off"
 else
 echo "Invalid variable for Duplicate Resolver"
 fi
+
+
+##Sometimes Agent or Daemon for Jamf 
