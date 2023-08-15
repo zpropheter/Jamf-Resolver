@@ -30,7 +30,7 @@ url="https://yourserver.jamfcloud.com"
 JRR=FALSE
 DSER=TRUE
 MCR=FALSE
-GHOST_R=FALSE
+DUP_R=FALSE
 
 #HARD CODED VARIABLES
 loggedInUser=$( echo "show State:/Users/ConsoleUser" | /usr/sbin/scutil | /usr/bin/awk '/Name :/ && ! /loginwindow/ { print $3 }' )
@@ -216,14 +216,14 @@ elif [ "$DSER" = CAUTIOUS ];then
 	echo -e "Invalid variable for Device Signature Error Resolver" >> $output
 fi
 
-#GHOST RESOLVER OR DUPLICATE DEVICE RECORD RESOLVER
+#DUP RESOLVER OR DUPLICATE DEVICE RECORD RESOLVER
 #SOMETIMES A DEVICE RECORD CAN APPEAR MULTIPLE TIMES IN JAMF PRO, IF THAT HAPPENS, THERE ARE MULTIPLE ISSUES THAT CAN ARISE FOR DEPLOYMENTS TO THE DEVICE AS WELL AS PERFORMANCE ON YOUR JAMF SERVER.
 #DEPLOYMENT OF THE CONFIGURATION PROFILE ATTACHED TO JAMF-RESOLVER IS MANADATORY FOR THIS SECTION
 
 ###NEED TO DETERMINE IF WORKFLOW IS POSSIBLE VIA API OR STILL REQUIRES DATABASE MANIPULATION###
 
-if [[ $GHOST_R == TRUE ]] | && [[ $APISTATUS == ENABLED ]]; then
-echo "Ghost Resolver is turned on, checking for configuration profile..."
+if [[ $DUP_R == TRUE ]] | && [[ $DUP_R == ENABLED ]]; then
+echo "Duplicate Resolver is turned on, checking for configuration profile..."
 	if [[ $redeploy_response != ""]]; then
  	echo "Configuration profile found"
   	#run a recon to check for current device ID
@@ -231,11 +231,11 @@ echo "Ghost Resolver is turned on, checking for configuration profile..."
   	else
    	echo "No configuration profile found, unable to proceed"
     	fi
-elif [[ $GHOST_R == CAUTIOUS ]]; then
-echo "Ghost Resolver is operating in cautious mode, checking for ghost records"
+elif [[ $DUP_R == CAUTIOUS ]]; then
+echo "Duplicate Resolver is operating in cautious mode, checking for Duplicate records"
 #put same compare statements from TRUE mode but without API flow
-elif [[ $GHOST_R == FALSE ]]; then
-echo "Ghost Resolver is turned off"
+elif [[ $DUP_R == FALSE ]]; then
+echo "Duplicate Resolver is turned off"
 else
-echo "Invalid variable for Ghost Resolver"
+echo "Invalid variable for Duplicate Resolver"
 fi
